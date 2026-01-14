@@ -76,9 +76,9 @@ async def start_cmd(message: types.Message):
     if not await check_subs(message.from_user.id):
         kb = [[InlineKeyboardButton(text="Kanalga a'zo bo'lish", url=ch['link'])] for ch in CHANNELS]
         kb.append([InlineKeyboardButton(text="Tekshirish ✅", callback_data="check_sub")])
-        return await message.answer("Botdan foydalanish uchun kanallarga obuna bo'ling:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+        return await message.answer("AI Botdan foydalanish uchun kanallarga obuna bo'ling:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
     
-    await message.answer(f"Salom {message.from_user.first_name}! Barcha xizmatlar tayyor. Tanlang:", reply_markup=get_main_menu(message.from_user.id))
+    await message.answer(f"Salom {message.from_user.first_name}! Men U.ASILBEK.M tomonidan yaratilgan sun'iy intellekt AI man.Barcha xizmatlar tayyor. Tanlang:", reply_markup=get_main_menu(message.from_user.id))
 
 @dp.callback_query(F.data == "main_menu")
 async def back_home(call: types.CallbackQuery, state: FSMContext):
@@ -128,7 +128,7 @@ async def feedback_start(call: types.CallbackQuery, state: FSMContext):
 async def send_feedback_to_admin(message: types.Message, state: FSMContext):
     await bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
     await bot.send_message(ADMIN_ID, f"🆔 User ID: {message.from_user.id}\n👤 User: {message.from_user.full_name}")
-    await message.answer("✅ Xabaringiz adminga yuborildi!", reply_markup=get_back_btn())
+    await message.answer("✅ Xabaringiz adminga muvaffaqiyatli yuborildi!", reply_markup=get_back_btn())
     await state.clear()
 
 @dp.callback_query(F.data == "my_profile")
@@ -136,17 +136,17 @@ async def show_profile(call: types.CallbackQuery):
     async with aiosqlite.connect("users.db") as db:
         async with db.execute("SELECT ref_count, ai_requests, join_date FROM users WHERE user_id = ?", (call.from_user.id,)) as c:
             u = await c.fetchone()
-    text = f"👤 Sizning profilingiz:\n\n🆔 ID: {call.from_user.id}\n📅 A'zo bo'lingan: {u[2]}\n👥 Takliflar: {u[0]} ta\n🤖 AI so'rovlar: {u[1]} ta"
+    text = f"👤 Sizning profil ID raqamingiz:\n\n🆔 ID: {call.from_user.id}\n📅 A'zo bo'linganlar soni: {u[2]}\n👥 Takliflar soni: {u[0]} ta\n🤖 AI UMAGPT4 so'rovlar soni: {u[1]} ta"
     await call.message.edit_text(text, reply_markup=get_back_btn())
 
 @dp.callback_query(F.data == "referral")
 async def referral_link(call: types.CallbackQuery):
     link = f"https://t.me/{(await bot.get_me()).username}?start={call.from_user.id}"
-    await call.message.edit_text(f"🔗 Taklif havolangiz:\n`{link}`\n\nHar bir taklif uchun bot imkoniyatlari kengayadi!", reply_markup=get_back_btn())
+    await call.message.edit_text(f"🔗 Taklif havolangiz:\n`{link}`\n\nHar bir taklif uchun bot imkoniyatlari kengayadi va botimiz rivojiga o'z hissangizni qo'shing!", reply_markup=get_back_btn())
 
 @dp.callback_query(F.data == "ai_chat")
 async def ai_chat_prompt(call: types.CallbackQuery):
-    await call.message.edit_text("🤖 Men GPT-4 yordamchisiman. Savolingizni yozing:", reply_markup=get_back_btn())
+    await call.message.edit_text("🤖 Men AI UMAGPT4. A.Maxsudov.U yordamchisiman. Savolingizni yozing Adminga bog'lanish uchun ADMINGA BOG'LANISH tugmasini bosing va xabaringizni yozing:", reply_markup=get_back_btn())
 
 @dp.callback_query(F.data == "ai_image")
 async def ai_image_prompt(call: types.CallbackQuery):
@@ -157,7 +157,7 @@ async def handle_ai_requests(message: types.Message, state: FSMContext):
     if not await check_subs(message.from_user.id): return
     if await state.get_state() in [States.waiting_for_ads, States.waiting_for_feedback, States.waiting_for_name]: return
 
-    msg = await message.answer("⏳ AI ishlamoqda...")
+    msg = await message.answer("⏳ AI o'ylamoqda...")
     try:
         async with aiosqlite.connect("users.db") as db:
             await db.execute("UPDATE users SET ai_requests = ai_requests + 1 WHERE user_id = ?", (message.from_user.id,))
@@ -166,7 +166,7 @@ async def handle_ai_requests(message: types.Message, state: FSMContext):
         res = await g4f.ChatCompletion.create_async(model=g4f.models.gpt_4, messages=[{"role": "user", "content": message.text}])
         await msg.edit_text(str(res), reply_markup=get_back_btn())
     except:
-        await msg.edit_text("❌ AI hozirda band.", reply_markup=get_back_btn())
+        await msg.edit_text("❌ AI hozirda band🤖 iltimos keyinroq urinib ko'ring.", reply_markup=get_back_btn())
 
 @dp.callback_query(F.data == "weather_menu")
 async def weather_m(call: types.CallbackQuery):
@@ -224,3 +224,4 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.run(main())
+
