@@ -101,7 +101,7 @@ async def start_cmd(message: types.Message):
         kb.append([InlineKeyboardButton(text="Tekshirish ✅", callback_data="check_sub")])
         return await message.answer("AI Botdan foydalanish uchun kanallarga obuna bo'ling:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
     
-    await message.answer(f"Salom {message.from_user.first_name}! Men A.NAXSUDOV.Utomonidan yaratilgan AI man. Sizga qanday yordam bera olaman?", reply_markup=get_main_menu(user_id))
+    await message.answer(f"Salom {message.from_user.first_name}! Men A.MAXSUDOV.U tomonidan yaratilgan AI man. Sizga qanday yordam bera olaman?", reply_markup=get_main_menu(user_id))
 
 @dp.callback_query(F.data == "check_sub")
 async def check_subscription_callback(call: types.CallbackQuery):
@@ -290,3 +290,4 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.run(main())
+
