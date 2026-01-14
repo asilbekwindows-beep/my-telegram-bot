@@ -10,7 +10,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import aiohttp
 
 API_TOKEN = '8356590220:AAHbhriXSYBHBPvU34q4YxgmHgHNfdO9780'
-ADMIN_ID = 7319857848 
+ADMIN_ID = 7319857848  
 WEATHER_API = "b7280387ca556819616e453c5e89647b"
 
 CHANNELS = [
@@ -47,30 +47,27 @@ async def check_subs(user_id):
 
 async def get_currency():
     try:
-    
         url = "https://cbu.uz/uz/arkhiv-kursov-valyut/json/"
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=10) as resp:
+            async with session.get(url, timeout=15) as resp:
                 data = await resp.json()
-                
                 usd_data = next(item for item in data if item['Ccy'] == 'USD')
                 return f"🇺🇿 Markaziy Bank kursi:\n💰 1 USD = {usd_data['Rate']} so'm\n📅 Sana: {usd_data['Date']}"
     except Exception as e:
-        logging.error(f"Valyuta xatosi: {e}")
-        return "❌ Valyuta kursini hozircha olib bo'lmadi (CBU xizmati band)."
+        return "❌ Valyuta kursini hozircha olib bo'lmadi."
 
 async def get_weather(city_code):
     try:
         city_name = VILOYATLAR.get(city_code, "Toshkent")
         url = f"http://api.openweathermap.org/data/2.5/weather?q={city_name}&appid={WEATHER_API}&units=metric&lang=uz"
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=10) as resp:
+            async with session.get(url, timeout=15) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     return f"📍 {city_name}: {data['main']['temp']}°C, {data['weather'][0]['description']}"
-                return "❌ Ob-havo ma'lumoti topilmadi."
+                return "❌ Ma'lumot topilmadi."
     except Exception:
-        return "❌ Ob-havo xizmatida ulanish xatosi."
+        return "❌ Ob-havo xizmati xatosi."
 
 @dp.message(Command("start"))
 async def start_cmd(message: types.Message):
@@ -81,15 +78,16 @@ async def start_cmd(message: types.Message):
     if not await check_subs(message.from_user.id):
         kb = [[InlineKeyboardButton(text="Kanalga a'zo bo'lish", url=ch['link'])] for ch in CHANNELS]
         kb.append([InlineKeyboardButton(text="Tekshirish ✅", callback_data="check_sub")])
-        return await message.answer("Botdan foydalanish uchun quyidagi kanallarga a'zo bo'ling:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+        return await message.answer("Botdan foydalanish uchun kanallarga a'zo bo'ling:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
     kb = [
         [InlineKeyboardButton(text="Ob-havo 🌤", callback_data="weather_menu"), InlineKeyboardButton(text="Valyuta 💵", callback_data="currency")],
-        [InlineKeyboardButton(text="AI va Rasm 🎨", callback_data="ai_chat")]
+        [InlineKeyboardButton(text="AI bilan gaplashish 🤖", callback_data="ai_chat")]
     ]
     if message.from_user.id == ADMIN_ID:
         kb.append([InlineKeyboardButton(text="Reklama 📢", callback_data="send_ads"), InlineKeyboardButton(text="Statistika 📊", callback_data="stat")])
-    await message.answer("Bosh menyu. Kerakli bo'limni tanlang:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    
+    await message.answer("Xush kelibsiz! Bo'limni tanlang:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 @dp.callback_query(F.data == "check_sub")
 async def check_callback(call: types.CallbackQuery):
@@ -97,7 +95,7 @@ async def check_callback(call: types.CallbackQuery):
         await call.message.delete()
         await start_cmd(call.message)
     else:
-        await call.answer("Siz hali a'zo emassiz!", show_alert=True)
+        await call.answer("A'zo bo'lmadingiz!", show_alert=True)
 
 @dp.callback_query(F.data == "currency")
 async def currency_call(call: types.CallbackQuery):
@@ -122,29 +120,35 @@ async def show_weather(call: types.CallbackQuery):
 
 @dp.callback_query(F.data == "ai_chat")
 async def ai_info(call: types.CallbackQuery):
-    await call.message.answer("🤖 Menga xabar yuboring (Masalan: 'Futbol haqida ma'lumot ber' yoki 'Mashina rasmini chiz').")
+    await call.message.answer("🤖 Savolingizni yozing (Masalan: 'Toshkent haqida ma'lumot ber'):")
     await call.answer()
 
 @dp.message(F.text, F.chat.type == "private")
 async def chat_ai(message: types.Message, state: FSMContext):
-    if not await check_subs(message.from_user.id): return
-    if await state.get_state() == AdminStates.waiting_for_ads: return
-    
+    # Admin reklama yozayotgan bo'lsa AI ishlamasligi kerak
+    current_state = await state.get_state()
+    if current_state == AdminStates.waiting_for_ads:
+        return
+
+    if not await check_subs(message.from_user.id):
+        return await message.answer("Avval kanallarga a'zo bo'ling.")
+
     msg = await message.answer("⏳ AI o'ylamoqda...")
+    
     try:
-        is_image = any(x in message.text.lower() for x in ["chiz", "rasm", "tasvirla"])
         response = await g4f.ChatCompletion.create_async(
-            model=g4f.models.gemini if is_image else g4f.models.gpt_35_turbo,
+            model=g4f.models.gpt_4, # Barqarorroq model
             messages=[{"role": "user", "content": message.text}],
-            image_generation=is_image
         )
-        if is_image and isinstance(response, list):
-            await message.answer_photo(response[0], caption="Tayyor!")
-            await msg.delete()
-        else:
+        
+        if response:
             await msg.edit_text(str(response))
-    except Exception:
-        await msg.edit_text("❌ AI hozirda band. Birozdan so'ng urinib ko'ring.")
+        else:
+            await msg.edit_text("❌ AI javob bera olmadi. Qayta urinib ko'ring.")
+            
+    except Exception as e:
+        logging.error(f"AI xatosi: {e}")
+        await msg.edit_text("❌ AI hozirda band yoki ulanishda xato. Birozdan so'ng urinib ko'ring.")
 
 @dp.callback_query(F.data == "stat")
 async def show_stat(call: types.CallbackQuery):
@@ -156,17 +160,24 @@ async def show_stat(call: types.CallbackQuery):
 @dp.callback_query(F.data == "send_ads")
 async def ads_prompt(call: types.CallbackQuery, state: FSMContext):
     await state.set_state(AdminStates.waiting_for_ads)
-    await call.message.answer("Reklama xabarini (matn yoki rasm) yuboring:")
+    await call.message.answer("📢 Reklama xabarini yuboring (Matn, rasm yoki video):")
 
 @dp.message(AdminStates.waiting_for_ads)
 async def broadcast(message: types.Message, state: FSMContext):
+    await state.clear()
     async with aiosqlite.connect("users.db") as db:
         async with db.execute("SELECT user_id FROM users") as cursor:
-            async for row in cursor:
-                try: await message.copy_to(row[0])
-                except: pass
-    await message.answer("📢 Reklama barcha foydalanuvchilarga yuborildi.")
-    await state.clear()
+            users = await cursor.fetchall()
+    
+    sent = 0
+    for row in users:
+        try:
+            await message.copy_to(row[0])
+            sent += 1
+            await asyncio.sleep(0.05) # Spamdan himoya
+        except: pass
+    
+    await message.answer(f"✅ Reklama {sent} ta foydalanuvchiga yuborildi.")
 
 async def main():
     await init_db()
@@ -174,4 +185,3 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.run(main())
-
