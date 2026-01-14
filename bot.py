@@ -4,7 +4,7 @@ import aiosqlite
 import g4f
 import aiohttp
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -42,6 +42,7 @@ class States(StatesGroup):
     waiting_for_ads = State()
     waiting_for_feedback = State()
     waiting_for_name = State()
+    waiting_for_image_prompt = State() # Rasm uchun holat qo'shildi
 
 async def init_db():
     async with aiosqlite.connect("users.db") as db:
@@ -76,18 +77,31 @@ async def check_subs(user_id):
         except: return False
     return True
 
-@dp.message(Command("start"))
+@dp.message(CommandStart()) 
 async def start_cmd(message: types.Message):
-    async with aiosqlite.connect("users.db") as db:
-        await db.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (message.from_user.id,))
-        await db.commit()
+    args = message.text.split()
+    user_id = message.from_user.id
     
-    if not await check_subs(message.from_user.id):
+    async with aiosqlite.connect("users.db") as db:
+        
+        cursor = await db.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
+        user_exists = await cursor.fetchone()
+        
+        if not user_exists:
+            await db.execute("INSERT INTO users (user_id) VALUES (?)", (user_id,))
+    
+            if len(args) > 1 and args[1].isdigit():
+                referrer_id = int(args[1])
+                if referrer_id != user_id:
+                    await db.execute("UPDATE users SET ref_count = ref_count + 1 WHERE user_id = ?", (referrer_id,))
+            await db.commit()
+    
+    if not await check_subs(user_id):
         kb = [[InlineKeyboardButton(text="Kanalga a'zo bo'lish", url=ch['link'])] for ch in CHANNELS]
         kb.append([InlineKeyboardButton(text="Tekshirish ✅", callback_data="check_sub")])
         return await message.answer("AI Botdan foydalanish uchun kanallarga obuna bo'ling:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
     
-    await message.answer(f"Salom {message.from_user.first_name}! Men **Nazoratchi AI** man. Sizga qanday yordam bera olaman?", reply_markup=get_main_menu(message.from_user.id))
+    await message.answer(f"Salom {message.from_user.first_name}! Men A.NAXSUDOV.Utomonidan yaratilgan AI man. Sizga qanday yordam bera olaman?", reply_markup=get_main_menu(user_id))
 
 @dp.callback_query(F.data == "check_sub")
 async def check_subscription_callback(call: types.CallbackQuery):
@@ -161,43 +175,66 @@ async def show_w(call: types.CallbackQuery):
         except:
             await call.answer("❌ Serverda xatolik.", show_alert=True)
 
+@dp.callback_query(F.data == "ai_image")
+async def ai_image_prompt(call: types.CallbackQuery, state: FSMContext):
+    await state.set_state(States.waiting_for_image_prompt)
+    await call.message.edit_text("🎨 Nimaning rasmini chizay? Batafsil yozing (Masalan: 'Futuristik shahar'):", reply_markup=get_back_btn())
+
+@dp.message(States.waiting_for_image_prompt)
+async def process_image_request(message: types.Message, state: FSMContext):
+    msg = await message.answer("⏳ Rasm chizilmoqda...")
+    try:
+        response = await g4f.ChatCompletion.create_async(
+            model=g4f.models.default,
+            messages=[{"role": "user", "content": message.text}],
+            image_generation=True
+        )
+        if response:
+            await message.answer_photo(photo=response, caption=f"🎨 Sizning so'rovingiz: {message.text}")
+            await msg.delete()
+        else:
+            await msg.edit_text("❌ Rasm yaratishda xatolik yuz berdi.")
+    except:
+        await msg.edit_text("❌ AI rasm servisi hozirda band.")
+    await state.clear()
+
+@dp.callback_query(F.data == "feedback")
+async def feedback_start(call: types.CallbackQuery, state: FSMContext):
+    await state.set_state(States.waiting_for_feedback)
+    await call.message.edit_text("✍️ Adminga xabaringizni yuboring:", reply_markup=get_back_btn())
+
+@dp.message(States.waiting_for_feedback)
+async def process_feedback(message: types.Message, state: FSMContext):
+    admin_msg = f"🆔 User ID: {message.from_user.id}\n👤 User: {message.from_user.full_name}\n\n📝 Xabar: {message.text}"
+    await bot.send_message(ADMIN_ID, admin_msg)
+    await message.answer("✅ Xabaringiz adminga yuborildi!", reply_markup=get_back_btn())
+    await state.clear()
+
+@dp.callback_query(F.data == "referral")
+async def referral_link(call: types.CallbackQuery):
+    me = await bot.get_me()
+    link = f"https://t.me/{me.username}?start={call.from_user.id}"
+    await call.message.edit_text(f"🔗 **Taklif havolangiz:**\n\n`{link}`\n\nHar bir taklif qilingan do'stingiz uchun profilingizga ball qo'shiladi!", reply_markup=get_back_btn())
+
 @dp.callback_query(F.data == "send_ads")
 async def ad_pr(call: types.CallbackQuery, state: FSMContext):
     await state.set_state(States.waiting_for_ads)
-    await call.message.answer("📢 Reklama xabarini yuboring (rasm, video yoki tekst):", reply_markup=get_back_btn())
+    await call.message.answer("📢 Reklama xabarini yuboring:", reply_markup=get_back_btn())
 
 @dp.message(States.waiting_for_ads)
 async def broadcast(message: types.Message, state: FSMContext):
     async with aiosqlite.connect("users.db") as db:
         async with db.execute("SELECT user_id FROM users") as cursor:
             users = await cursor.fetchall()
-    
     count = 0
-    status = await message.answer("⏳ Yuborilmoqda...")
     for row in users:
         try:
             await message.copy_to(row[0])
             count += 1
             await asyncio.sleep(0.05)
         except: pass
-    await status.edit_text(f"✅ Reklama {count} kishiga yuborildi.")
+    await message.answer(f"✅ Reklama {count} kishiga yuborildi.")
     await state.clear()
-
-@dp.message(States.waiting_for_feedback)
-async def send_feedback_to_admin(message: types.Message, state: FSMContext):
-    msg_to_admin = f"🆔 User ID: {message.from_user.id}\n👤 User: {message.from_user.full_name}\n\n📝 Xabar: {message.text}"
-    await bot.send_message(ADMIN_ID, msg_to_admin)
-    await message.answer("✅ Xabaringiz adminga yuborildi!", reply_markup=get_back_btn())
-    await state.clear()
-
-@dp.message(F.reply_to_message & (F.chat.id == ADMIN_ID))
-async def reply_handler(message: types.Message):
-    try:
-        if "🆔 User ID:" in message.reply_to_message.text:
-            u_id = int(message.reply_to_message.text.split("🆔 User ID: ")[1].split("\n")[0])
-            await bot.send_message(u_id, f"✉️ **Admindan javob:**\n\n{message.text}")
-            await message.reply("✅ Javobingiz yuborildi.")
-    except: pass
 
 @dp.callback_query(F.data == "names_meaning")
 async def name_start(call: types.CallbackQuery, state: FSMContext):
@@ -216,25 +253,8 @@ async def show_profile(call: types.CallbackQuery):
     async with aiosqlite.connect("users.db") as db:
         async with db.execute("SELECT ref_count, ai_requests, join_date FROM users WHERE user_id = ?", (call.from_user.id,)) as c:
             u = await c.fetchone()
-    text = f"👤 Profilingiz:\n🆔 ID: {call.from_user.id}\n📅 A'zo: {u[2]}\n🤖 AI so'rovlar: {u[1]}"
+    text = f"👤 Profilingiz:\n🆔 ID: {call.from_user.id}\n📅 A'zo: {u[2]}\n👥 Takliflar: {u[0]} ta\n🤖 AI so'rovlar: {u[1]}"
     await call.message.edit_text(text, reply_markup=get_back_btn())
-
-@dp.callback_query(F.data == "ai_chat")
-async def ai_chat_prompt(call: types.CallbackQuery):
-    await call.message.edit_text("🤖 Savolingizni yozing:", reply_markup=get_back_btn())
-
-@dp.message(F.text, F.chat.type == "private")
-async def handle_ai_requests(message: types.Message, state: FSMContext):
-    if not await check_subs(message.from_user.id): return
-    if await state.get_state(): return
-    msg = await message.answer("⏳ AI o'ylamoqda...")
-    try:
-        async with aiosqlite.connect("users.db") as db:
-            await db.execute("UPDATE users SET ai_requests = ai_requests + 1 WHERE user_id = ?", (message.from_user.id,))
-            await db.commit()
-        res = await g4f.ChatCompletion.create_async(model=g4f.models.gpt_4, messages=[{"role": "user", "content": message.text}])
-        await msg.edit_text(str(res), reply_markup=get_back_btn())
-    except: await msg.edit_text("❌ AI hozirda band.", reply_markup=get_back_btn())
 
 @dp.callback_query(F.data == "currency")
 async def curr(call: types.CallbackQuery):
@@ -250,6 +270,19 @@ async def stats(call: types.CallbackQuery):
         async with db.execute("SELECT COUNT(*) FROM users") as c:
             count = await c.fetchone()
     await call.message.answer(f"📊 Jami a'zolar: {count[0]} ta")
+
+@dp.message(F.text, F.chat.type == "private")
+async def handle_ai_requests(message: types.Message, state: FSMContext):
+    if not await check_subs(message.from_user.id): return
+    if await state.get_state(): return
+    msg = await message.answer("⏳ AI o'ylamoqda...")
+    try:
+        async with aiosqlite.connect("users.db") as db:
+            await db.execute("UPDATE users SET ai_requests = ai_requests + 1 WHERE user_id = ?", (message.from_user.id,))
+            await db.commit()
+        res = await g4f.ChatCompletion.create_async(model=g4f.models.gpt_4, messages=[{"role": "user", "content": message.text}])
+        await msg.edit_text(str(res), reply_markup=get_back_btn())
+    except: await msg.edit_text("❌ AI hozirda band iltimos keyinroq urunib ko'ring.", reply_markup=get_back_btn())
 
 async def main():
     await init_db()
