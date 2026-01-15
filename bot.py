@@ -143,7 +143,7 @@ async def show_namoz(call: types.CallbackQuery):
                             f"🕒 Bugun: {d['date']}")
                     await call.message.edit_text(text, reply_markup=get_back_btn())
         except:
-            await call.answer("❌ Serverda xatolik.", show_alert=True)
+            await call.answer("❌ Serverda xatolik bor.", show_alert=True)
 
 @dp.callback_query(F.data == "weather_menu")
 async def weather_m(call: types.CallbackQuery):
@@ -290,4 +290,5 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.run(main())
+
 
