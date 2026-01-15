@@ -284,11 +284,19 @@ async def handle_ai_requests(message: types.Message, state: FSMContext):
         await msg.edit_text(str(res), reply_markup=get_back_btn())
     except: await msg.edit_text("❌ AI hozirda band iltimos keyinroq urunib ko'ring.", reply_markup=get_back_btn())
 
+async def keep_alive():
+    while True:
+        try:
+            logging.info("Botni uyg'oq saqlash tekshiruvi (Ping)...")
+        except Exception as e:
+            logging.error(f"Keep-alive xatosi: {e}")
+        await asyncio.sleep(420) # 7 daqiqa
+
 async def main():
     await init_db()
+    # Orqa fonda keep_alive vazifasini ishga tushirish
+    asyncio.create_task(keep_alive())
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
     asyncio.run(main())
-
-
