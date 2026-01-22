@@ -56,7 +56,7 @@ async def init_db():
 
 def get_main_menu(user_id):
     kb = [
-        [InlineKeyboardButton(text="🤖 AI Chat", callback_data="ai_chat"), InlineKeyboardButton(text="🎨 Rasm Chizish", callback_data="ai_image")],
+        [InlineKeyboardButton(text="🤖 AI Chat.", callback_data="ai_chat"), InlineKeyboardButton(text="🎨 Rasm Chizish", callback_data="ai_image")],
         [InlineKeyboardButton(text="🌤 Ob-havo", callback_data="weather_menu"), InlineKeyboardButton(text="🕋 Namoz Vaqti", callback_data="namoz_menu")],
         [InlineKeyboardButton(text="📖 Ismlar Ma'nosi", callback_data="names_meaning"), InlineKeyboardButton(text="💵 Valyuta", callback_data="currency")],
         [InlineKeyboardButton(text="👤 Profilim", callback_data="my_profile"), InlineKeyboardButton(text="✍️ Adminga yozish", callback_data="feedback")],
@@ -300,3 +300,4 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.run(main())
+
